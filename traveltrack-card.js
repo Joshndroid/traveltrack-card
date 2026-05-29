@@ -17,7 +17,7 @@
  *   3. Add the card as above.
  */
 
-const CARD_VERSION = "1.0.6";
+const CARD_VERSION = "1.0.7";
 
 const SENSORS = {
   shiftToday:    "sensor.traveltrack_shift_today",
@@ -40,7 +40,35 @@ const SENSORS = {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function stateOf(hass, entityId) {
-  return hass?.states?.[entityId] ?? null;
+  const states = hass?.states ?? {};
+  if (states[entityId]) return states[entityId];
+
+  const objectId = entityId.split(".")[1];
+  if (!objectId) return null;
+
+  const suffix = objectId.replace(/^traveltrack_/, "");
+  const candidates = Object.keys(states)
+    .filter((id) => id.startsWith("sensor."))
+    .filter((id) => {
+      const oid = id.split(".")[1] ?? "";
+      return (
+        oid === objectId
+        || oid === `traveltrack_assistant_${suffix}`
+        || oid.endsWith(`_${suffix}`)
+      );
+    })
+    .sort((a, b) => {
+      const score = (id) => {
+        const oid = id.split(".")[1] ?? "";
+        if (oid === objectId) return 0;
+        if (oid === `traveltrack_assistant_${suffix}`) return 1;
+        if (oid.startsWith("traveltrack_")) return 2;
+        return 3;
+      };
+      return score(a) - score(b) || a.localeCompare(b);
+    });
+
+  return states[candidates[0]] ?? null;
 }
 
 function val(hass, entityId) {
