@@ -1,0 +1,410 @@
+/**
+ * traveltrack-card.js
+ * Lovelace custom card for TravelTrack.
+ *
+ * Recommended install (HACS):
+ *   1. HACS → Frontend → ⋮ → Custom repositories → add this repo, category "Dashboard".
+ *   2. Install "TravelTrack Card". HACS adds the dashboard resource automatically.
+ *   3. Add to a dashboard:
+ *        type: custom:traveltrack-card
+ *        title: "My Commute"   # optional
+ *
+ * Manual install:
+ *   1. Copy this file to config/www/community/traveltrack-card/traveltrack-card.js
+ *   2. Settings → Dashboards → Resources → Add:
+ *        URL:  /local/community/traveltrack-card/traveltrack-card.js
+ *        Type: JavaScript Module
+ *   3. Add the card as above.
+ */
+
+const CARD_VERSION = "1.0.0";
+
+const SENSORS = {
+  shiftToday:    "sensor.traveltrack_shift_today",
+  shiftTomorrow: "sensor.traveltrack_shift_tomorrow",
+  morningStatus: "sensor.traveltrack_morning_status",
+  morningEarly:  "sensor.traveltrack_morning_early",
+  morningJit:    "sensor.traveltrack_morning_jit",
+  eveningStatus: "sensor.traveltrack_evening_status",
+  eveningEarly:  "sensor.traveltrack_evening_early",
+  eveningJit:    "sensor.traveltrack_evening_jit",
+  lastUpdated:   "sensor.traveltrack_last_updated",
+};
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function stateOf(hass, entityId) {
+  return hass?.states?.[entityId] ?? null;
+}
+
+function val(hass, entityId) {
+  return stateOf(hass, entityId)?.state ?? null;
+}
+
+function attr(hass, entityId, key) {
+  return stateOf(hass, entityId)?.attributes?.[key] ?? null;
+}
+
+function fmt(timeStr) {
+  // timeStr is already "HH:MM" from the addon
+  return timeStr ?? "—";
+}
+
+function dateLabel() {
+  return new Date().toLocaleDateString("en-AU", {
+    weekday: "short", day: "numeric", month: "short",
+  });
+}
+
+// ─── Card class ─────────────────────────────────────────────────────────────
+
+class TravelTrackCard extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" });
+    this._hass = null;
+    this._config = {};
+  }
+
+  setConfig(config) {
+    this._config = config ?? {};
+    this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._render();
+  }
+
+  getCardSize() {
+    return 5;
+  }
+
+  static getConfigElement() {
+    // Basic editor stub — HA will use this for the visual editor
+    return document.createElement("div");
+  }
+
+  static getStubConfig() {
+    return { title: "My Commute" };
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  _render() {
+    if (!this._hass) return;
+    const h = this._hass;
+    const cfg = this._config;
+
+    const title      = cfg.title ?? "My Commute";
+    const shiftToday = val(h, SENSORS.shiftToday);
+    const noShift    = !shiftToday || shiftToday === "none" || shiftToday === "unavailable";
+
+    // Morning
+    const mStatus    = val(h, SENSORS.morningStatus);   // "clear" | "disrupted" | "unknown"
+    const mEarly     = val(h, SENSORS.morningEarly);
+    const mJit       = val(h, SENSORS.morningJit);
+    const mPlan      = attr(h, SENSORS.morningEarly, "plan") ?? "a";
+    const mWalk      = attr(h, SENSORS.morningEarly, "walk_minutes") ?? 0;
+
+    // Evening
+    const eStatus       = val(h, SENSORS.eveningStatus);
+    const eEarly        = val(h, SENSORS.eveningEarly);
+    const eJit          = val(h, SENSORS.eveningJit);
+    const ePlan         = attr(h, SENSORS.eveningEarly, "plan") ?? "a";
+    const eWalk         = attr(h, SENSORS.eveningEarly, "walk_minutes") ?? 0;
+    const eTrackwork    = attr(h, SENSORS.eveningStatus, "trackwork_starts");
+    const eLastSafe     = attr(h, SENSORS.eveningJit, "last_safe_train");
+
+    // Shift labels
+    const shiftTomorrow = val(h, SENSORS.shiftTomorrow);
+    const lastUpdated   = val(h, SENSORS.lastUpdated);
+    const updatedLabel  = lastUpdated
+      ? new Date(lastUpdated).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })
+      : null;
+
+    // ── Leave-by calculation (Plan B) ────────────────────────────────────
+    function leaveBy(timeStr, walkMins) {
+      if (!timeStr || !walkMins) return null;
+      const [h, m] = timeStr.split(":").map(Number);
+      const total  = h * 60 + m - walkMins;
+      const lh     = Math.floor(((total % 1440) + 1440) % 1440 / 60);
+      const lm     = ((total % 60) + 60) % 60;
+      return `${String(lh).padStart(2,"0")}:${String(lm).padStart(2,"0")}`;
+    }
+
+    const mLeaveEarly = leaveBy(mEarly, mWalk);
+    const mLeaveJit   = leaveBy(mJit,   mWalk);
+    const eLeaveEarly = leaveBy(eEarly, eWalk);
+    const eLeaveJit   = leaveBy(eJit,   eWalk);
+
+    // ── Status icons / pills ─────────────────────────────────────────────
+    function pill(status, plan) {
+      if (status === "disrupted") return `<span class="pill red">🔴 Plan ${plan.toUpperCase()} — Disrupted</span>`;
+      if (status === "clear")     return `<span class="pill green">🟢 All clear</span>`;
+      return `<span class="pill grey">⚪ Unknown</span>`;
+    }
+
+    // ── Journey leg HTML ─────────────────────────────────────────────────
+    function planARows(early, jit) {
+      return `
+        <div class="dep-row">
+          <span class="dep-label">Early</span>
+          <span class="dep-time">${fmt(early)}</span>
+        </div>
+        <div class="dep-row">
+          <span class="dep-label">JIT</span>
+          <span class="dep-time">${fmt(jit)}</span>
+        </div>`;
+    }
+
+    function planBRows(early, jit, leaveEarly, leaveJit, walk) {
+      return `
+        <div class="dep-row">
+          <span class="dep-label">Early bus</span>
+          <span class="dep-time">${fmt(early)}</span>
+          ${leaveEarly ? `<span class="walk-warn">⚠️ leave by ${leaveEarly} (${walk}min walk)</span>` : ""}
+        </div>
+        <div class="dep-row">
+          <span class="dep-label">JIT bus</span>
+          <span class="dep-time">${fmt(jit)}</span>
+          ${leaveJit ? `<span class="walk-warn">⚠️ leave by ${leaveJit} (${walk}min walk)</span>` : ""}
+        </div>`;
+    }
+
+    // Morning section
+    const morningRows = mPlan === "b"
+      ? planBRows(mEarly, mJit, mLeaveEarly, mLeaveJit, mWalk)
+      : planARows(mEarly, mJit);
+
+    // Evening section — handle trackwork-before-shift-end scenario
+    let eveningRows = "";
+    if (eTrackwork && eLastSafe) {
+      eveningRows = `
+        <div class="trackwork-warn">
+          ⚠️ Trackwork from ${eTrackwork} — last safe train ${eLastSafe}
+        </div>
+        ${planBRows(eEarly, eJit, eLeaveEarly, eLeaveJit, eWalk)}`;
+    } else if (ePlan === "b") {
+      eveningRows = planBRows(eEarly, eJit, eLeaveEarly, eLeaveJit, eWalk);
+    } else {
+      eveningRows = planARows(eEarly, eJit);
+    }
+
+    // Plan B panel visibility
+    const showMorningB = mPlan === "b";
+    const showEveningB = ePlan === "b" || (eTrackwork && eLastSafe);
+
+    // ── No-shift state ───────────────────────────────────────────────────
+    const mainContent = noShift
+      ? `<div class="no-shift">No shift today</div>`
+      : `
+        <div class="section-header">━━ MORNING ━━━━━━━━━━━━━━━━━━━━━━━</div>
+        <div class="status-row">${pill(mStatus, mPlan)}</div>
+        ${showMorningB ? `<div class="planb-panel">${morningRows}</div>` : morningRows}
+
+        <div class="section-header top-gap">━━ EVENING ━━━━━━━━━━━━━━━━━━━━━━━</div>
+        <div class="status-row">${pill(eStatus, ePlan)}</div>
+        ${showEveningB ? `<div class="planb-panel">${eveningRows}</div>` : eveningRows}
+      `;
+
+    // ── Full card HTML ───────────────────────────────────────────────────
+    this.shadowRoot.innerHTML = `
+      <style>
+        :host {
+          display: block;
+          font-family: var(--primary-font-family, sans-serif);
+        }
+
+        ha-card {
+          background: var(--card-background-color);
+          border-radius: var(--ha-card-border-radius, 12px);
+          box-shadow: var(--ha-card-box-shadow, none);
+          padding: 16px;
+          color: var(--primary-text-color);
+        }
+
+        .card-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          margin-bottom: 12px;
+        }
+
+        .card-title {
+          font-size: 1.1rem;
+          font-weight: 600;
+          color: var(--primary-text-color);
+        }
+
+        .card-date {
+          font-size: 0.8rem;
+          color: var(--secondary-text-color);
+        }
+
+        .shift-row {
+          display: flex;
+          justify-content: space-between;
+          font-size: 0.88rem;
+          color: var(--secondary-text-color);
+          margin-bottom: 12px;
+          padding-bottom: 10px;
+          border-bottom: 1px solid var(--divider-color, rgba(255,255,255,0.12));
+        }
+
+        .shift-val {
+          font-weight: 600;
+          color: var(--primary-text-color);
+        }
+
+        .section-header {
+          font-size: 0.72rem;
+          font-weight: 600;
+          letter-spacing: 0.06em;
+          color: var(--secondary-text-color);
+          margin: 8px 0 6px;
+          opacity: 0.7;
+        }
+
+        .top-gap { margin-top: 14px; }
+
+        .status-row {
+          margin-bottom: 6px;
+        }
+
+        .pill {
+          display: inline-block;
+          font-size: 0.82rem;
+          font-weight: 600;
+          padding: 3px 10px;
+          border-radius: 20px;
+        }
+
+        .pill.green {
+          background: rgba(76, 175, 80, 0.18);
+          color: #4caf50;
+        }
+
+        .pill.red {
+          background: rgba(244, 67, 54, 0.18);
+          color: #f44336;
+        }
+
+        .pill.grey {
+          background: rgba(158, 158, 158, 0.18);
+          color: var(--secondary-text-color);
+        }
+
+        .dep-row {
+          display: flex;
+          align-items: baseline;
+          gap: 10px;
+          padding: 3px 0 3px 8px;
+          font-size: 0.9rem;
+        }
+
+        .dep-label {
+          min-width: 60px;
+          color: var(--secondary-text-color);
+          font-size: 0.82rem;
+        }
+
+        .dep-time {
+          font-weight: 700;
+          font-size: 1rem;
+          color: var(--primary-text-color);
+          min-width: 44px;
+        }
+
+        .walk-warn {
+          font-size: 0.75rem;
+          color: var(--warning-color, #f0a500);
+        }
+
+        .planb-panel {
+          background: rgba(244, 67, 54, 0.07);
+          border-left: 3px solid var(--error-color, #f44336);
+          border-radius: 0 6px 6px 0;
+          padding: 6px 8px;
+          margin: 4px 0;
+          animation: slideIn 0.2s ease;
+        }
+
+        @keyframes slideIn {
+          from { opacity: 0; transform: translateY(-4px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .trackwork-warn {
+          font-size: 0.8rem;
+          color: var(--warning-color, #f0a500);
+          padding: 4px 0 6px 4px;
+        }
+
+        .no-shift {
+          text-align: center;
+          color: var(--secondary-text-color);
+          font-size: 0.9rem;
+          padding: 20px 0;
+          opacity: 0.6;
+        }
+
+        .footer {
+          display: flex;
+          justify-content: space-between;
+          font-size: 0.72rem;
+          color: var(--secondary-text-color);
+          margin-top: 14px;
+          padding-top: 8px;
+          border-top: 1px solid var(--divider-color, rgba(255,255,255,0.12));
+          opacity: 0.6;
+        }
+      </style>
+
+      <ha-card>
+        <div class="card-header">
+          <span class="card-title">🚉 ${title}</span>
+          <span class="card-date">${dateLabel()}</span>
+        </div>
+
+        <div class="shift-row">
+          <span>Today</span>
+          <span class="shift-val">${noShift ? "No shift" : shiftToday}</span>
+        </div>
+        ${shiftTomorrow && shiftTomorrow !== "none" ? `
+        <div class="shift-row" style="margin-top:-8px;">
+          <span>Tomorrow</span>
+          <span class="shift-val">${shiftTomorrow}</span>
+        </div>` : ""}
+
+        ${mainContent}
+
+        <div class="footer">
+          <span>${updatedLabel ? `Updated ${updatedLabel}` : "Not yet updated"}</span>
+        </div>
+      </ha-card>
+    `;
+  }
+}
+
+// Guard against double-registration (e.g. resource added twice) — a second
+// customElements.define() call throws and would break the whole module load.
+if (!customElements.get("traveltrack-card")) {
+  customElements.define("traveltrack-card", TravelTrackCard);
+}
+
+window.customCards = window.customCards ?? [];
+if (!window.customCards.some((c) => c.type === "traveltrack-card")) {
+  window.customCards.push({
+    type:        "traveltrack-card",
+    name:        "TravelTrack Card",
+    description: "Displays your TravelTrack commute brief — Plan A/B, departure times, disruption alerts.",
+    preview:     false,
+  });
+}
+
+console.info(
+  `%c TRAVELTRACK-CARD %c v${CARD_VERSION} `,
+  "color:white;background:#03a9f4;font-weight:700;border-radius:3px 0 0 3px;",
+  "color:#03a9f4;background:#1c1c1c;font-weight:700;border-radius:0 3px 3px 0;",
+);
