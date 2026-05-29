@@ -17,7 +17,7 @@
  *   3. Add the card as above.
  */
 
-const CARD_VERSION = "1.0.7";
+const CARD_VERSION = "1.0.8";
 
 const SENSORS = {
   shiftToday:    "sensor.traveltrack_shift_today",
@@ -47,21 +47,35 @@ function stateOf(hass, entityId) {
   if (!objectId) return null;
 
   const suffix = objectId.replace(/^traveltrack_/, "");
+  const suffixes = new Set([
+    suffix,
+    suffix.replace(/_early$/, "_early_departure"),
+    suffix.replace(/_jit$/, "_jit_departure"),
+  ]);
   const candidates = Object.keys(states)
     .filter((id) => id.startsWith("sensor."))
     .filter((id) => {
       const oid = id.split(".")[1] ?? "";
-      return (
-        oid === objectId
-        || oid === `traveltrack_assistant_${suffix}`
-        || oid.endsWith(`_${suffix}`)
-      );
+      for (const candidateSuffix of suffixes) {
+        if (
+          oid === objectId
+          || oid === `traveltrack_${candidateSuffix}`
+          || oid === `traveltrack_assistant_${candidateSuffix}`
+          || oid.endsWith(`_${candidateSuffix}`)
+        ) {
+          return true;
+        }
+      }
+      return false;
     })
     .sort((a, b) => {
       const score = (id) => {
         const oid = id.split(".")[1] ?? "";
         if (oid === objectId) return 0;
-        if (oid === `traveltrack_assistant_${suffix}`) return 1;
+        for (const candidateSuffix of suffixes) {
+          if (oid === `traveltrack_assistant_${candidateSuffix}`) return 1;
+          if (oid === `traveltrack_${candidateSuffix}`) return 2;
+        }
         if (oid.startsWith("traveltrack_")) return 2;
         return 3;
       };
