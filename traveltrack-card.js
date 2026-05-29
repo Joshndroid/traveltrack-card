@@ -17,7 +17,7 @@
  *   3. Add the card as above.
  */
 
-const CARD_VERSION = "1.0.3";
+const CARD_VERSION = "1.0.4";
 
 const SENSORS = {
   shiftToday:    "sensor.traveltrack_shift_today",
@@ -51,6 +51,14 @@ function attr(hass, entityId, key) {
   return stateOf(hass, entityId)?.attributes?.[key] ?? null;
 }
 
+function firstStateOf(hass, entityIds) {
+  for (const entityId of entityIds) {
+    const state = stateOf(hass, entityId);
+    if (state) return state;
+  }
+  return null;
+}
+
 function fmt(timeStr) {
   if (!timeStr || timeStr === "unknown" || timeStr === "unavailable") return "—";
   if (/^\d{2}:\d{2}/.test(timeStr)) return timeStr.slice(0, 5);
@@ -67,6 +75,13 @@ function dateLabel(offsetDays = 0) {
   return d.toLocaleDateString("en-AU", {
     weekday: "short", day: "numeric", month: "short",
   });
+}
+
+function timeLabel(value) {
+  if (!value || value === "unknown" || value === "unavailable") return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
 }
 
 // ─── Card class ─────────────────────────────────────────────────────────────
@@ -144,10 +159,24 @@ class TravelTrackCard extends HTMLElement {
     // Shift labels
     const shiftTomorrow = val(h, SENSORS.shiftTomorrow);
     const hasShiftTomorrow = !!shiftTomorrow && shiftTomorrow !== "none" && shiftTomorrow !== "unavailable";
-    const lastUpdated   = val(h, SENSORS.lastUpdated);
-    const updatedLabel  = lastUpdated
-      ? new Date(lastUpdated).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })
-      : null;
+    const lastUpdatedState = firstStateOf(h, [
+      SENSORS.lastUpdated,
+      "sensor.traveltrack_assistant_last_updated",
+    ]);
+    const lastUpdated = lastUpdatedState?.state;
+    const fallbackUpdatedState = firstStateOf(h, [
+      SENSORS.leaveForWorkEarly,
+      SENSORS.finishingWorkEarly,
+      SENSORS.shiftToday,
+      SENSORS.shiftTomorrow,
+      SENSORS.tomorrowLeaveForWorkEarly,
+    ]);
+    const updatedLabel =
+      timeLabel(lastUpdated)
+      ?? timeLabel(lastUpdatedState?.last_updated)
+      ?? timeLabel(lastUpdatedState?.last_changed)
+      ?? timeLabel(fallbackUpdatedState?.last_updated)
+      ?? timeLabel(fallbackUpdatedState?.last_changed);
     function hasValue(v) {
       return !!v && v !== "unknown" && v !== "unavailable";
     }
