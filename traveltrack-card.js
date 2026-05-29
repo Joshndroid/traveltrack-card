@@ -17,7 +17,7 @@
  *   3. Add the card as above.
  */
 
-const CARD_VERSION = "1.0.4";
+const CARD_VERSION = "1.0.6";
 
 const SENSORS = {
   shiftToday:    "sensor.traveltrack_shift_today",
