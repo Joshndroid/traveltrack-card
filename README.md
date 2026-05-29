@@ -41,7 +41,7 @@ title: My Commute   # optional
 
 ## Troubleshooting
 
-- **Card doesn't appear / "Custom element doesn't exist".** The JavaScript resource isn't loaded. With HACS this is automatic; if you copied the file in manually, make sure you added the resource (step 2 above) and hard-refreshed. Open the browser console — you should see a `TRAVELTRACK-CARD v1.0.0` banner once the module loads.
+- **Card doesn't appear / "Custom element doesn't exist".** The JavaScript resource isn't loaded. With HACS this is automatic; if you copied the file in manually, make sure you added the resource (step 2 above) and hard-refreshed. Open the browser console — you should see a `TRAVELTRACK-CARD v1.0.1` banner once the module loads.
 - **Card shows "No shift today".** That's expected when no shift is scheduled; confirm `sensor.traveltrack_shift_today` has a value.
 
 ## License

@@ -17,7 +17,7 @@
  *   3. Add the card as above.
  */
 
-const CARD_VERSION = "1.0.0";
+const CARD_VERSION = "1.0.1";
 
 const SENSORS = {
   shiftToday:    "sensor.traveltrack_shift_today",
@@ -98,7 +98,7 @@ class TravelTrackCard extends HTMLElement {
 
     const title      = cfg.title ?? "My Commute";
     const shiftToday = val(h, SENSORS.shiftToday);
-    const noShift    = !shiftToday || shiftToday === "none" || shiftToday === "unavailable";
+    const hasShiftToday = !!shiftToday && shiftToday !== "none" && shiftToday !== "unavailable";
 
     // Leave for Work
     const mStatus    = val(h, SENSORS.leaveForWorkStatus);   // "clear" | "disrupted" | "unknown"
@@ -118,10 +118,14 @@ class TravelTrackCard extends HTMLElement {
 
     // Shift labels
     const shiftTomorrow = val(h, SENSORS.shiftTomorrow);
+    const hasShiftTomorrow = !!shiftTomorrow && shiftTomorrow !== "none" && shiftTomorrow !== "unavailable";
     const lastUpdated   = val(h, SENSORS.lastUpdated);
     const updatedLabel  = lastUpdated
       ? new Date(lastUpdated).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })
       : null;
+    const hasCommutePlan = [mEarly, mJit, eEarly, eJit].some((v) => !!v && v !== "unknown" && v !== "unavailable");
+    const noShift = !hasShiftToday && !hasShiftTomorrow && !hasCommutePlan;
+    const waitingForPlan = !noShift && !hasCommutePlan;
 
     // ── Leave-by calculation (Plan B) ────────────────────────────────────
     function leaveBy(timeStr, walkMins) {
@@ -197,7 +201,9 @@ class TravelTrackCard extends HTMLElement {
 
     // ── No-shift state ───────────────────────────────────────────────────
     const mainContent = noShift
-      ? `<div class="no-shift">No shift today</div>`
+      ? `<div class="no-shift">No shift in current window</div>`
+      : waitingForPlan
+      ? `<div class="no-shift">Shift found, waiting for commute plan</div>`
       : `
         <div class="section-header">━━ LEAVE FOR WORK ━━━━━━━━━━━━━━━━━━━━━━━</div>
         <div class="status-row">${pill(mStatus, mPlan)}</div>
@@ -369,9 +375,9 @@ class TravelTrackCard extends HTMLElement {
 
         <div class="shift-row">
           <span>Today</span>
-          <span class="shift-val">${noShift ? "No shift" : shiftToday}</span>
+          <span class="shift-val">${hasShiftToday ? shiftToday : "No shift"}</span>
         </div>
-        ${shiftTomorrow && shiftTomorrow !== "none" ? `
+        ${hasShiftTomorrow ? `
         <div class="shift-row" style="margin-top:-8px;">
           <span>Tomorrow</span>
           <span class="shift-val">${shiftTomorrow}</span>
