@@ -17,7 +17,7 @@
  *   3. Add the card as above.
  */
 
-const CARD_VERSION = "1.0.1";
+const CARD_VERSION = "1.0.2";
 
 const SENSORS = {
   shiftToday:    "sensor.traveltrack_shift_today",
@@ -28,6 +28,12 @@ const SENSORS = {
   finishingWorkStatus: "sensor.traveltrack_finishing_work_status",
   finishingWorkEarly:  "sensor.traveltrack_finishing_work_early",
   finishingWorkJit:    "sensor.traveltrack_finishing_work_jit",
+  tomorrowLeaveForWorkStatus: "sensor.traveltrack_tomorrow_leave_for_work_status",
+  tomorrowLeaveForWorkEarly:  "sensor.traveltrack_tomorrow_leave_for_work_early",
+  tomorrowLeaveForWorkJit:    "sensor.traveltrack_tomorrow_leave_for_work_jit",
+  tomorrowFinishingWorkStatus: "sensor.traveltrack_tomorrow_finishing_work_status",
+  tomorrowFinishingWorkEarly:  "sensor.traveltrack_tomorrow_finishing_work_early",
+  tomorrowFinishingWorkJit:    "sensor.traveltrack_tomorrow_finishing_work_jit",
   lastUpdated:   "sensor.traveltrack_last_updated",
 };
 
@@ -46,8 +52,13 @@ function attr(hass, entityId, key) {
 }
 
 function fmt(timeStr) {
-  // timeStr is already "HH:MM" from the addon
-  return timeStr ?? "—";
+  if (!timeStr || timeStr === "unknown" || timeStr === "unavailable") return "—";
+  if (/^\d{2}:\d{2}/.test(timeStr)) return timeStr.slice(0, 5);
+  const parsed = new Date(timeStr);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
+  }
+  return timeStr;
 }
 
 function dateLabel() {
@@ -116,6 +127,18 @@ class TravelTrackCard extends HTMLElement {
     const eTrackwork    = attr(h, SENSORS.finishingWorkStatus, "trackwork_starts");
     const eLastSafe     = attr(h, SENSORS.finishingWorkJit, "last_safe_train");
 
+    // Tomorrow
+    const tmStatus = val(h, SENSORS.tomorrowLeaveForWorkStatus);
+    const tmEarly  = val(h, SENSORS.tomorrowLeaveForWorkEarly);
+    const tmJit    = val(h, SENSORS.tomorrowLeaveForWorkJit);
+    const tmPlan   = attr(h, SENSORS.tomorrowLeaveForWorkEarly, "plan") ?? "a";
+    const tmWalk   = attr(h, SENSORS.tomorrowLeaveForWorkEarly, "walk_minutes") ?? 0;
+    const teStatus = val(h, SENSORS.tomorrowFinishingWorkStatus);
+    const teEarly  = val(h, SENSORS.tomorrowFinishingWorkEarly);
+    const teJit    = val(h, SENSORS.tomorrowFinishingWorkJit);
+    const tePlan   = attr(h, SENSORS.tomorrowFinishingWorkEarly, "plan") ?? "a";
+    const teWalk   = attr(h, SENSORS.tomorrowFinishingWorkEarly, "walk_minutes") ?? 0;
+
     // Shift labels
     const shiftTomorrow = val(h, SENSORS.shiftTomorrow);
     const hasShiftTomorrow = !!shiftTomorrow && shiftTomorrow !== "none" && shiftTomorrow !== "unavailable";
@@ -123,14 +146,20 @@ class TravelTrackCard extends HTMLElement {
     const updatedLabel  = lastUpdated
       ? new Date(lastUpdated).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })
       : null;
-    const hasCommutePlan = [mEarly, mJit, eEarly, eJit].some((v) => !!v && v !== "unknown" && v !== "unavailable");
-    const noShift = !hasShiftToday && !hasShiftTomorrow && !hasCommutePlan;
-    const waitingForPlan = !noShift && !hasCommutePlan;
+    function hasValue(v) {
+      return !!v && v !== "unknown" && v !== "unavailable";
+    }
+
+    const hasCommutePlan = [mEarly, mJit, eEarly, eJit].some(hasValue);
+    const hasTomorrowPlan = [tmEarly, tmJit, teEarly, teJit].some(hasValue);
+    const noShift = !hasShiftToday && !hasShiftTomorrow && !hasCommutePlan && !hasTomorrowPlan;
+    const waitingForPlan = !noShift && !hasCommutePlan && !hasTomorrowPlan;
 
     // ── Leave-by calculation (Plan B) ────────────────────────────────────
     function leaveBy(timeStr, walkMins) {
       if (!timeStr || !walkMins) return null;
       const [h, m] = timeStr.split(":").map(Number);
+      if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
       const total  = h * 60 + m - walkMins;
       const lh     = Math.floor(((total % 1440) + 1440) % 1440 / 60);
       const lm     = ((total % 60) + 60) % 60;
@@ -141,6 +170,10 @@ class TravelTrackCard extends HTMLElement {
     const mLeaveJit   = leaveBy(mJit,   mWalk);
     const eLeaveEarly = leaveBy(eEarly, eWalk);
     const eLeaveJit   = leaveBy(eJit,   eWalk);
+    const tmLeaveEarly = leaveBy(fmt(tmEarly), tmWalk);
+    const tmLeaveJit   = leaveBy(fmt(tmJit),   tmWalk);
+    const teLeaveEarly = leaveBy(fmt(teEarly), teWalk);
+    const teLeaveJit   = leaveBy(fmt(teJit),   teWalk);
 
     // ── Status icons / pills ─────────────────────────────────────────────
     function pill(status, plan) {
@@ -198,13 +231,30 @@ class TravelTrackCard extends HTMLElement {
     // Plan B panel visibility
     const showLeaveForWorkB = mPlan === "b";
     const showFinishingWorkB = ePlan === "b" || (eTrackwork && eLastSafe);
+    const tomorrowLeaveRows = tmPlan === "b"
+      ? planBRows(tmEarly, tmJit, tmLeaveEarly, tmLeaveJit, tmWalk)
+      : planARows(tmEarly, tmJit);
+    const tomorrowFinishRows = tePlan === "b"
+      ? planBRows(teEarly, teJit, teLeaveEarly, teLeaveJit, teWalk)
+      : planARows(teEarly, teJit);
+    const tomorrowContent = hasTomorrowPlan
+      ? `
+        <div class="section-header top-gap">━━ TOMORROW ━━━━━━━━━━━━━━━━━━━━━━━</div>
+        <div class="subsection-title">Leave for Work</div>
+        <div class="status-row">${pill(tmStatus, tmPlan)}</div>
+        ${tmPlan === "b" ? `<div class="planb-panel">${tomorrowLeaveRows}</div>` : tomorrowLeaveRows}
+
+        <div class="subsection-title top-gap-small">Finishing Work</div>
+        <div class="status-row">${pill(teStatus, tePlan)}</div>
+        ${tePlan === "b" ? `<div class="planb-panel">${tomorrowFinishRows}</div>` : tomorrowFinishRows}
+      `
+      : "";
 
     // ── No-shift state ───────────────────────────────────────────────────
     const mainContent = noShift
       ? `<div class="no-shift">No shift in current window</div>`
-      : waitingForPlan
-      ? `<div class="no-shift">Shift found, waiting for commute plan</div>`
-      : `
+      : hasCommutePlan
+      ? `
         <div class="section-header">━━ LEAVE FOR WORK ━━━━━━━━━━━━━━━━━━━━━━━</div>
         <div class="status-row">${pill(mStatus, mPlan)}</div>
         ${showLeaveForWorkB ? `<div class="planb-panel">${leaveForWorkRows}</div>` : leaveForWorkRows}
@@ -212,7 +262,10 @@ class TravelTrackCard extends HTMLElement {
         <div class="section-header top-gap">━━ FINISHING WORK ━━━━━━━━━━━━━━━━━━━━━━━</div>
         <div class="status-row">${pill(eStatus, ePlan)}</div>
         ${showFinishingWorkB ? `<div class="planb-panel">${finishingWorkRows}</div>` : finishingWorkRows}
-      `;
+      `
+      : waitingForPlan
+      ? `<div class="no-shift">Shift found, waiting for commute plan</div>`
+      : "";
 
     // ── Full card HTML ───────────────────────────────────────────────────
     this.shadowRoot.innerHTML = `
@@ -273,6 +326,14 @@ class TravelTrackCard extends HTMLElement {
         }
 
         .top-gap { margin-top: 14px; }
+        .top-gap-small { margin-top: 10px; }
+
+        .subsection-title {
+          font-size: 0.82rem;
+          font-weight: 600;
+          color: var(--primary-text-color);
+          margin: 6px 0 4px;
+        }
 
         .status-row {
           margin-bottom: 6px;
@@ -384,6 +445,7 @@ class TravelTrackCard extends HTMLElement {
         </div>` : ""}
 
         ${mainContent}
+        ${tomorrowContent}
 
         <div class="footer">
           <span>${updatedLabel ? `Updated ${updatedLabel}` : "Not yet updated"}</span>
