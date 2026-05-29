@@ -17,7 +17,7 @@
  *   3. Add the card as above.
  */
 
-const CARD_VERSION = "1.0.11";
+const CARD_VERSION = "1.0.12";
 
 const SENSORS = {
   shiftToday:    "sensor.traveltrack_shift_today",
@@ -36,6 +36,8 @@ const SENSORS = {
   tomorrowFinishingWorkJit:    "sensor.traveltrack_tomorrow_finishing_work_jit",
   lastUpdated:   "sensor.traveltrack_last_updated",
 };
+
+const OFF_CODES = new Set(["RD", "PDO", "REC", "PHO"]);
 
 const SENSOR_NAMES = {
   shift_today: "Shift Today",
@@ -168,6 +170,14 @@ function timeLabel(value) {
   return parsed.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
 }
 
+function isKnownValue(value) {
+  return !!value && value !== "none" && value !== "unknown" && value !== "unavailable";
+}
+
+function isWorkShift(value) {
+  return isKnownValue(value) && !OFF_CODES.has(String(value).toUpperCase());
+}
+
 // ─── Card class ─────────────────────────────────────────────────────────────
 
 class TravelTrackCard extends HTMLElement {
@@ -211,7 +221,8 @@ class TravelTrackCard extends HTMLElement {
 
     const title      = cfg.title ?? "My Commute";
     const shiftToday = val(h, SENSORS.shiftToday);
-    const hasShiftToday = !!shiftToday && shiftToday !== "none" && shiftToday !== "unavailable";
+    const hasRosterToday = isKnownValue(shiftToday);
+    const hasShiftToday = isWorkShift(shiftToday);
 
     // Leave for Work
     const mStatus    = val(h, SENSORS.leaveForWorkStatus);   // "clear" | "disrupted" | "unknown"
@@ -243,7 +254,8 @@ class TravelTrackCard extends HTMLElement {
 
     // Shift labels
     const shiftTomorrow = val(h, SENSORS.shiftTomorrow);
-    const hasShiftTomorrow = !!shiftTomorrow && shiftTomorrow !== "none" && shiftTomorrow !== "unavailable";
+    const hasRosterTomorrow = isKnownValue(shiftTomorrow);
+    const hasShiftTomorrow = isWorkShift(shiftTomorrow);
     const lastUpdatedState = firstStateOf(h, [
       SENSORS.lastUpdated,
       "sensor.traveltrack_assistant_last_updated",
@@ -269,7 +281,7 @@ class TravelTrackCard extends HTMLElement {
     const hasCommutePlan = [mEarly, mJit, eEarly, eJit].some(hasValue);
     const hasTodayPlan = hasShiftToday && hasCommutePlan;
     const hasTomorrowPlan = [tmEarly, tmJit, teEarly, teJit].some(hasValue);
-    const noShift = !hasShiftToday && !hasShiftTomorrow && !hasTomorrowPlan;
+    const noShift = !hasRosterToday && !hasRosterTomorrow && !hasTomorrowPlan;
     const waitingForTodayPlan = hasShiftToday && !hasTodayPlan;
 
     // ── Leave-by calculation (Plan B) ────────────────────────────────────
@@ -364,10 +376,12 @@ class TravelTrackCard extends HTMLElement {
         <div class="status-row">${pill(teStatus, tePlan)}</div>
         ${tePlan === "b" ? `<div class="planb-panel">${tomorrowFinishRows}</div>` : tomorrowFinishRows}
       `
+      : hasRosterTomorrow && !hasShiftTomorrow
+      ? `<div class="no-shift compact">${shiftTomorrow}</div>`
       : hasShiftTomorrow
       ? `<div class="no-shift compact">Shift found, waiting for tomorrow commute plan</div>`
       : "";
-    const tomorrowContent = hasShiftTomorrow || hasTomorrowPlan
+    const tomorrowContent = hasRosterTomorrow || hasTomorrowPlan
       ? `
         <div class="day-panel tomorrow-panel">
           <div class="day-header">
@@ -375,7 +389,7 @@ class TravelTrackCard extends HTMLElement {
               <div class="day-title">Tomorrow</div>
               <div class="day-date">${dateLabel(1)}</div>
             </div>
-            <div class="shift-val">${hasShiftTomorrow ? shiftTomorrow : "No shift"}</div>
+            <div class="shift-val">${hasRosterTomorrow ? shiftTomorrow : "No shift"}</div>
           </div>
           ${tomorrowBody}
         </div>
@@ -384,7 +398,7 @@ class TravelTrackCard extends HTMLElement {
 
     // ── No-shift state ───────────────────────────────────────────────────
     const mainContent = !hasShiftToday
-      ? `<div class="no-shift">No shift today</div>`
+      ? `<div class="no-shift">${hasRosterToday ? shiftToday : "No shift today"}</div>`
       : hasTodayPlan
       ? `
         <div class="section-header">━━ LEAVE FOR WORK ━━━━━━━━━━━━━━━━━━━━━━━</div>
@@ -609,7 +623,7 @@ class TravelTrackCard extends HTMLElement {
               <div class="day-title">Today</div>
               <div class="day-date">${dateLabel(0)}</div>
             </div>
-            <div class="shift-val">${hasShiftToday ? shiftToday : "No shift"}</div>
+            <div class="shift-val">${hasRosterToday ? shiftToday : "No shift"}</div>
           </div>
           ${mainContent}
         </div>
