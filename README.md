@@ -1,10 +1,10 @@
 # TravelTrack Card
 
-A Lovelace custom card for [TravelTrack](https://github.com/joshndroid) — shows your daily commute brief from the TravelTrack Home Assistant integration: morning and evening departures, Plan A / Plan B status, walk-by warnings, and trackwork alerts.
+A Lovelace custom card for [TravelTrack](https://github.com/joshndroid) — shows your daily commute brief from the TravelTrack Home Assistant integration: Leave for Work and Finishing Work departures, Plan A / Plan B status, walk-by warnings, and trackwork alerts.
 
 ## Requirements
 
-The TravelTrack add-on and integration must already be installed and exposing the `sensor.traveltrack_*` entities (morning/evening status, early/JIT departures, shift today/tomorrow, last updated).
+The TravelTrack add-on and integration must already be installed and exposing the `sensor.traveltrack_*` entities (Leave for Work/Finishing Work status, early/JIT departures, shift today/tomorrow, last updated).
 
 ## Installation
 

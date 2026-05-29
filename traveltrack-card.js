@@ -22,12 +22,12 @@ const CARD_VERSION = "1.0.0";
 const SENSORS = {
   shiftToday:    "sensor.traveltrack_shift_today",
   shiftTomorrow: "sensor.traveltrack_shift_tomorrow",
-  morningStatus: "sensor.traveltrack_morning_status",
-  morningEarly:  "sensor.traveltrack_morning_early",
-  morningJit:    "sensor.traveltrack_morning_jit",
-  eveningStatus: "sensor.traveltrack_evening_status",
-  eveningEarly:  "sensor.traveltrack_evening_early",
-  eveningJit:    "sensor.traveltrack_evening_jit",
+  leaveForWorkStatus: "sensor.traveltrack_leave_for_work_status",
+  leaveForWorkEarly:  "sensor.traveltrack_leave_for_work_early",
+  leaveForWorkJit:    "sensor.traveltrack_leave_for_work_jit",
+  finishingWorkStatus: "sensor.traveltrack_finishing_work_status",
+  finishingWorkEarly:  "sensor.traveltrack_finishing_work_early",
+  finishingWorkJit:    "sensor.traveltrack_finishing_work_jit",
   lastUpdated:   "sensor.traveltrack_last_updated",
 };
 
@@ -100,21 +100,21 @@ class TravelTrackCard extends HTMLElement {
     const shiftToday = val(h, SENSORS.shiftToday);
     const noShift    = !shiftToday || shiftToday === "none" || shiftToday === "unavailable";
 
-    // Morning
-    const mStatus    = val(h, SENSORS.morningStatus);   // "clear" | "disrupted" | "unknown"
-    const mEarly     = val(h, SENSORS.morningEarly);
-    const mJit       = val(h, SENSORS.morningJit);
-    const mPlan      = attr(h, SENSORS.morningEarly, "plan") ?? "a";
-    const mWalk      = attr(h, SENSORS.morningEarly, "walk_minutes") ?? 0;
+    // Leave for Work
+    const mStatus    = val(h, SENSORS.leaveForWorkStatus);   // "clear" | "disrupted" | "unknown"
+    const mEarly     = val(h, SENSORS.leaveForWorkEarly);
+    const mJit       = val(h, SENSORS.leaveForWorkJit);
+    const mPlan      = attr(h, SENSORS.leaveForWorkEarly, "plan") ?? "a";
+    const mWalk      = attr(h, SENSORS.leaveForWorkEarly, "walk_minutes") ?? 0;
 
-    // Evening
-    const eStatus       = val(h, SENSORS.eveningStatus);
-    const eEarly        = val(h, SENSORS.eveningEarly);
-    const eJit          = val(h, SENSORS.eveningJit);
-    const ePlan         = attr(h, SENSORS.eveningEarly, "plan") ?? "a";
-    const eWalk         = attr(h, SENSORS.eveningEarly, "walk_minutes") ?? 0;
-    const eTrackwork    = attr(h, SENSORS.eveningStatus, "trackwork_starts");
-    const eLastSafe     = attr(h, SENSORS.eveningJit, "last_safe_train");
+    // Finishing Work
+    const eStatus       = val(h, SENSORS.finishingWorkStatus);
+    const eEarly        = val(h, SENSORS.finishingWorkEarly);
+    const eJit          = val(h, SENSORS.finishingWorkJit);
+    const ePlan         = attr(h, SENSORS.finishingWorkEarly, "plan") ?? "a";
+    const eWalk         = attr(h, SENSORS.finishingWorkEarly, "walk_minutes") ?? 0;
+    const eTrackwork    = attr(h, SENSORS.finishingWorkStatus, "trackwork_starts");
+    const eLastSafe     = attr(h, SENSORS.finishingWorkJit, "last_safe_train");
 
     // Shift labels
     const shiftTomorrow = val(h, SENSORS.shiftTomorrow);
@@ -172,40 +172,40 @@ class TravelTrackCard extends HTMLElement {
         </div>`;
     }
 
-    // Morning section
-    const morningRows = mPlan === "b"
+    // Leave for Work section
+    const leaveForWorkRows = mPlan === "b"
       ? planBRows(mEarly, mJit, mLeaveEarly, mLeaveJit, mWalk)
       : planARows(mEarly, mJit);
 
-    // Evening section — handle trackwork-before-shift-end scenario
-    let eveningRows = "";
+    // Finishing Work section — handle trackwork-before-shift-end scenario
+    let finishingWorkRows = "";
     if (eTrackwork && eLastSafe) {
-      eveningRows = `
+      finishingWorkRows = `
         <div class="trackwork-warn">
           ⚠️ Trackwork from ${eTrackwork} — last safe train ${eLastSafe}
         </div>
         ${planBRows(eEarly, eJit, eLeaveEarly, eLeaveJit, eWalk)}`;
     } else if (ePlan === "b") {
-      eveningRows = planBRows(eEarly, eJit, eLeaveEarly, eLeaveJit, eWalk);
+      finishingWorkRows = planBRows(eEarly, eJit, eLeaveEarly, eLeaveJit, eWalk);
     } else {
-      eveningRows = planARows(eEarly, eJit);
+      finishingWorkRows = planARows(eEarly, eJit);
     }
 
     // Plan B panel visibility
-    const showMorningB = mPlan === "b";
-    const showEveningB = ePlan === "b" || (eTrackwork && eLastSafe);
+    const showLeaveForWorkB = mPlan === "b";
+    const showFinishingWorkB = ePlan === "b" || (eTrackwork && eLastSafe);
 
     // ── No-shift state ───────────────────────────────────────────────────
     const mainContent = noShift
       ? `<div class="no-shift">No shift today</div>`
       : `
-        <div class="section-header">━━ MORNING ━━━━━━━━━━━━━━━━━━━━━━━</div>
+        <div class="section-header">━━ LEAVE FOR WORK ━━━━━━━━━━━━━━━━━━━━━━━</div>
         <div class="status-row">${pill(mStatus, mPlan)}</div>
-        ${showMorningB ? `<div class="planb-panel">${morningRows}</div>` : morningRows}
+        ${showLeaveForWorkB ? `<div class="planb-panel">${leaveForWorkRows}</div>` : leaveForWorkRows}
 
-        <div class="section-header top-gap">━━ EVENING ━━━━━━━━━━━━━━━━━━━━━━━</div>
+        <div class="section-header top-gap">━━ FINISHING WORK ━━━━━━━━━━━━━━━━━━━━━━━</div>
         <div class="status-row">${pill(eStatus, ePlan)}</div>
-        ${showEveningB ? `<div class="planb-panel">${eveningRows}</div>` : eveningRows}
+        ${showFinishingWorkB ? `<div class="planb-panel">${finishingWorkRows}</div>` : finishingWorkRows}
       `;
 
     // ── Full card HTML ───────────────────────────────────────────────────
