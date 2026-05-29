@@ -17,7 +17,7 @@
  *   3. Add the card as above.
  */
 
-const CARD_VERSION = "1.0.2";
+const CARD_VERSION = "1.0.3";
 
 const SENSORS = {
   shiftToday:    "sensor.traveltrack_shift_today",
@@ -61,8 +61,10 @@ function fmt(timeStr) {
   return timeStr;
 }
 
-function dateLabel() {
-  return new Date().toLocaleDateString("en-AU", {
+function dateLabel(offsetDays = 0) {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  return d.toLocaleDateString("en-AU", {
     weekday: "short", day: "numeric", month: "short",
   });
 }
@@ -237,9 +239,8 @@ class TravelTrackCard extends HTMLElement {
     const tomorrowFinishRows = tePlan === "b"
       ? planBRows(teEarly, teJit, teLeaveEarly, teLeaveJit, teWalk)
       : planARows(teEarly, teJit);
-    const tomorrowContent = hasTomorrowPlan
+    const tomorrowBody = hasTomorrowPlan
       ? `
-        <div class="section-header top-gap">━━ TOMORROW ━━━━━━━━━━━━━━━━━━━━━━━</div>
         <div class="subsection-title">Leave for Work</div>
         <div class="status-row">${pill(tmStatus, tmPlan)}</div>
         ${tmPlan === "b" ? `<div class="planb-panel">${tomorrowLeaveRows}</div>` : tomorrowLeaveRows}
@@ -247,6 +248,22 @@ class TravelTrackCard extends HTMLElement {
         <div class="subsection-title top-gap-small">Finishing Work</div>
         <div class="status-row">${pill(teStatus, tePlan)}</div>
         ${tePlan === "b" ? `<div class="planb-panel">${tomorrowFinishRows}</div>` : tomorrowFinishRows}
+      `
+      : hasShiftTomorrow
+      ? `<div class="no-shift compact">Shift found, waiting for tomorrow commute plan</div>`
+      : "";
+    const tomorrowContent = hasShiftTomorrow || hasTomorrowPlan
+      ? `
+        <div class="day-panel tomorrow-panel">
+          <div class="day-header">
+            <div>
+              <div class="day-title">Tomorrow</div>
+              <div class="day-date">${dateLabel(1)}</div>
+            </div>
+            <div class="shift-val">${hasShiftTomorrow ? shiftTomorrow : "No shift"}</div>
+          </div>
+          ${tomorrowBody}
+        </div>
       `
       : "";
 
@@ -287,7 +304,7 @@ class TravelTrackCard extends HTMLElement {
           display: flex;
           justify-content: space-between;
           align-items: baseline;
-          margin-bottom: 12px;
+          margin-bottom: 14px;
         }
 
         .card-title {
@@ -299,6 +316,45 @@ class TravelTrackCard extends HTMLElement {
         .card-date {
           font-size: 0.8rem;
           color: var(--secondary-text-color);
+        }
+
+        .day-panel {
+          border: 1px solid var(--divider-color, rgba(255,255,255,0.12));
+          border-radius: 8px;
+          padding: 12px;
+          margin-top: 10px;
+        }
+
+        .today-panel {
+          background: rgba(255,255,255,0.015);
+        }
+
+        .tomorrow-panel {
+          background: rgba(3, 169, 244, 0.055);
+          border-color: rgba(3, 169, 244, 0.28);
+        }
+
+        .day-header {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          align-items: baseline;
+          font-size: 0.88rem;
+          color: var(--secondary-text-color);
+          margin-bottom: 10px;
+          padding-bottom: 10px;
+          border-bottom: 1px solid var(--divider-color, rgba(255,255,255,0.12));
+        }
+
+        .day-title {
+          font-weight: 700;
+          color: var(--primary-text-color);
+        }
+
+        .day-date {
+          font-size: 0.78rem;
+          color: var(--secondary-text-color);
+          margin-top: 2px;
         }
 
         .shift-row {
@@ -416,6 +472,10 @@ class TravelTrackCard extends HTMLElement {
           opacity: 0.6;
         }
 
+        .no-shift.compact {
+          padding: 8px 0 2px;
+        }
+
         .footer {
           display: flex;
           justify-content: space-between;
@@ -431,20 +491,19 @@ class TravelTrackCard extends HTMLElement {
       <ha-card>
         <div class="card-header">
           <span class="card-title">🚉 ${title}</span>
-          <span class="card-date">${dateLabel()}</span>
+          <span class="card-date">${dateLabel(0)}</span>
         </div>
 
-        <div class="shift-row">
-          <span>Today</span>
-          <span class="shift-val">${hasShiftToday ? shiftToday : "No shift"}</span>
+        <div class="day-panel today-panel">
+          <div class="day-header">
+            <div>
+              <div class="day-title">Today</div>
+              <div class="day-date">${dateLabel(0)}</div>
+            </div>
+            <div class="shift-val">${hasShiftToday ? shiftToday : "No shift"}</div>
+          </div>
+          ${mainContent}
         </div>
-        ${hasShiftTomorrow ? `
-        <div class="shift-row" style="margin-top:-8px;">
-          <span>Tomorrow</span>
-          <span class="shift-val">${shiftTomorrow}</span>
-        </div>` : ""}
-
-        ${mainContent}
         ${tomorrowContent}
 
         <div class="footer">
