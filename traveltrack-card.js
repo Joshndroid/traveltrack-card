@@ -17,7 +17,7 @@
  *   3. Add the card as above.
  */
 
-const CARD_VERSION = "1.0.8";
+const CARD_VERSION = "1.0.9";
 
 const SENSORS = {
   shiftToday:    "sensor.traveltrack_shift_today",
@@ -37,6 +37,32 @@ const SENSORS = {
   lastUpdated:   "sensor.traveltrack_last_updated",
 };
 
+const SENSOR_NAMES = {
+  shift_today: "Shift Today",
+  shift_tomorrow: "Shift Tomorrow",
+  leave_for_work_status: "Leave for Work Status",
+  leave_for_work_early: "Leave for Work Early Departure",
+  leave_for_work_early_departure: "Leave for Work Early Departure",
+  leave_for_work_jit: "Leave for Work JIT Departure",
+  leave_for_work_jit_departure: "Leave for Work JIT Departure",
+  finishing_work_status: "Finishing Work Status",
+  finishing_work_early: "Finishing Work Early Departure",
+  finishing_work_early_departure: "Finishing Work Early Departure",
+  finishing_work_jit: "Finishing Work JIT Departure",
+  finishing_work_jit_departure: "Finishing Work JIT Departure",
+  tomorrow_leave_for_work_status: "Tomorrow Leave for Work Status",
+  tomorrow_leave_for_work_early: "Tomorrow Leave for Work Early Departure",
+  tomorrow_leave_for_work_early_departure: "Tomorrow Leave for Work Early Departure",
+  tomorrow_leave_for_work_jit: "Tomorrow Leave for Work JIT Departure",
+  tomorrow_leave_for_work_jit_departure: "Tomorrow Leave for Work JIT Departure",
+  tomorrow_finishing_work_status: "Tomorrow Finishing Work Status",
+  tomorrow_finishing_work_early: "Tomorrow Finishing Work Early Departure",
+  tomorrow_finishing_work_early_departure: "Tomorrow Finishing Work Early Departure",
+  tomorrow_finishing_work_jit: "Tomorrow Finishing Work JIT Departure",
+  tomorrow_finishing_work_jit_departure: "Tomorrow Finishing Work JIT Departure",
+  last_updated: "Last Updated",
+};
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function stateOf(hass, entityId) {
@@ -52,10 +78,24 @@ function stateOf(hass, entityId) {
     suffix.replace(/_early$/, "_early_departure"),
     suffix.replace(/_jit$/, "_jit_departure"),
   ]);
+  const wantedNames = new Set(
+    [...suffixes]
+      .map((candidateSuffix) => SENSOR_NAMES[candidateSuffix])
+      .filter(Boolean)
+      .flatMap((name) => [
+        name,
+        `TravelTrack ${name}`,
+        `TravelTrack Assistant ${name}`,
+      ])
+      .map((name) => name.toLowerCase())
+  );
   const candidates = Object.keys(states)
     .filter((id) => id.startsWith("sensor."))
     .filter((id) => {
       const oid = id.split(".")[1] ?? "";
+      const friendlyName = (states[id]?.attributes?.friendly_name ?? "").toLowerCase();
+      if (wantedNames.has(friendlyName)) return true;
+
       for (const candidateSuffix of suffixes) {
         if (
           oid === objectId
@@ -71,7 +111,9 @@ function stateOf(hass, entityId) {
     .sort((a, b) => {
       const score = (id) => {
         const oid = id.split(".")[1] ?? "";
+        const friendlyName = (states[id]?.attributes?.friendly_name ?? "").toLowerCase();
         if (oid === objectId) return 0;
+        if (friendlyName && wantedNames.has(friendlyName)) return 1;
         for (const candidateSuffix of suffixes) {
           if (oid === `traveltrack_assistant_${candidateSuffix}`) return 1;
           if (oid === `traveltrack_${candidateSuffix}`) return 2;
