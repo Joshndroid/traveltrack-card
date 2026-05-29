@@ -17,7 +17,7 @@
  *   3. Add the card as above.
  */
 
-const CARD_VERSION = "1.0.9";
+const CARD_VERSION = "1.0.11";
 
 const SENSORS = {
   shiftToday:    "sensor.traveltrack_shift_today",
@@ -176,6 +176,7 @@ class TravelTrackCard extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this._hass = null;
     this._config = {};
+    this._lastHtml = "";
   }
 
   setConfig(config) {
@@ -266,9 +267,10 @@ class TravelTrackCard extends HTMLElement {
     }
 
     const hasCommutePlan = [mEarly, mJit, eEarly, eJit].some(hasValue);
+    const hasTodayPlan = hasShiftToday && hasCommutePlan;
     const hasTomorrowPlan = [tmEarly, tmJit, teEarly, teJit].some(hasValue);
-    const noShift = !hasShiftToday && !hasShiftTomorrow && !hasCommutePlan && !hasTomorrowPlan;
-    const waitingForPlan = !noShift && !hasCommutePlan && !hasTomorrowPlan;
+    const noShift = !hasShiftToday && !hasShiftTomorrow && !hasTomorrowPlan;
+    const waitingForTodayPlan = hasShiftToday && !hasTodayPlan;
 
     // ── Leave-by calculation (Plan B) ────────────────────────────────────
     function leaveBy(timeStr, walkMins) {
@@ -381,9 +383,9 @@ class TravelTrackCard extends HTMLElement {
       : "";
 
     // ── No-shift state ───────────────────────────────────────────────────
-    const mainContent = noShift
-      ? `<div class="no-shift">No shift in current window</div>`
-      : hasCommutePlan
+    const mainContent = !hasShiftToday
+      ? `<div class="no-shift">No shift today</div>`
+      : hasTodayPlan
       ? `
         <div class="section-header">━━ LEAVE FOR WORK ━━━━━━━━━━━━━━━━━━━━━━━</div>
         <div class="status-row">${pill(mStatus, mPlan)}</div>
@@ -393,12 +395,12 @@ class TravelTrackCard extends HTMLElement {
         <div class="status-row">${pill(eStatus, ePlan)}</div>
         ${showFinishingWorkB ? `<div class="planb-panel">${finishingWorkRows}</div>` : finishingWorkRows}
       `
-      : waitingForPlan
+      : waitingForTodayPlan
       ? `<div class="no-shift">Shift found, waiting for commute plan</div>`
       : "";
 
     // ── Full card HTML ───────────────────────────────────────────────────
-    this.shadowRoot.innerHTML = `
+    const html = `
       <style>
         :host {
           display: block;
@@ -563,12 +565,6 @@ class TravelTrackCard extends HTMLElement {
           border-radius: 0 6px 6px 0;
           padding: 6px 8px;
           margin: 4px 0;
-          animation: slideIn 0.2s ease;
-        }
-
-        @keyframes slideIn {
-          from { opacity: 0; transform: translateY(-4px); }
-          to   { opacity: 1; transform: translateY(0); }
         }
 
         .trackwork-warn {
@@ -624,6 +620,10 @@ class TravelTrackCard extends HTMLElement {
         </div>
       </ha-card>
     `;
+    if (html !== this._lastHtml) {
+      this.shadowRoot.innerHTML = html;
+      this._lastHtml = html;
+    }
   }
 }
 
